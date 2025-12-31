@@ -194,7 +194,7 @@ const VIRTUAL_FS: FileSystemNode = {
         'secret': {
           type: 'file',
           name: 'secret',
-          content: 'the real invitation\nwas always here\n\n8pm sharp\nbring nothing\nexpect everything',
+          content: 'the real invitation\nwas always here\n\n5PM sharp\nbring nothing\nexpect everything',
         },
         'truth.txt': {
           type: 'file',
@@ -237,7 +237,7 @@ const VIRTUAL_FS: FileSystemNode = {
         'details': {
           type: 'file',
           name: 'details',
-          content: 'location: STU202\ndate: January 17th\ntime: 8PM - ???\n\nwhat: transformation\nhow: together\nwhy: because we must',
+          content: 'location: STU202\ndate: January 17th\ntime: 5PM - ???\n\nwhat: transformation\nhow: together\nwhy: because we must',
         },
         'expectations': {
           type: 'file',
@@ -425,7 +425,7 @@ const OUTPUT_LINES = [
   '', // Blank line
   'location: STU202',
   'date: 1/17',
-  'time: 8PM-??? (TBD)',
+  'time: 5PM-??? (TBD)',
   '', // Blank line
   'awaiting your arrival.', // Cursor will appear after this
   '', // Blank line
@@ -449,7 +449,7 @@ const LINE_PAUSES = [
   0.1,  // after blank (reduced from 0.15)
   0.1,  // after 'location: STU202' (reduced from 0.15)
   0.1,  // after 'date: 1/17' (reduced from 0.15)
-  0.1,  // after 'time: 8PM-??? (TBD)' (reduced from 0.15)
+  0.1,  // after 'time: 5PM-??? (TBD)' (reduced from 0.15)
   0.15, // after blank (reduced from 0.2)
   0.15, // after blank (reduced from 0.2)
   0,    // after 'awaiting your arrival.' - cursor appears, no pause needed
@@ -910,6 +910,9 @@ export default function TerminalAnimation() {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Only handle input if animation is complete and script is not running
       if (!showFinalPrompt || isScriptRunning) return;
+      
+      // Ignore if the event came from the hidden input (it will be handled by handleHiddenInputKeyDown)
+      if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
 
       if (e.key === 'Enter') {
         // Execute command and move current input to completed lines
@@ -1013,6 +1016,7 @@ export default function TerminalAnimation() {
         }
         
         // Update all state synchronously
+        // Always add command to history (even if empty, for consistency)
         setUserInputLines(prev => [...prev, command]);
         setCommandOutputs(prev => [...prev, output]);
         setCommandDirectories(prev => [...prev, currDir]); // Store directory at time of command
@@ -1117,6 +1121,9 @@ export default function TerminalAnimation() {
   const handleHiddenInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (!showFinalPrompt || isScriptRunning) return;
 
+    // Prevent event from bubbling to avoid duplicate handling
+    e.stopPropagation();
+    
     // Handle the same keys as the main keyboard handler
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -1196,17 +1203,18 @@ export default function TerminalAnimation() {
           }
         }
       } else {
-        output = [''];
-      }
-      
-      setUserInputLines(prev => [...prev, command]);
-      setCommandOutputs(prev => [...prev, output]);
-      setCommandDirectories(prev => [...prev, currDir]);
-      setCurrentUserInput('');
-      if (newDir !== currDir) {
-        currentDirectoryRef.current = newDir;
-        setCurrentDirectory(newDir);
-      }
+          output = [''];
+        }
+        
+        // Always add command to history (even if empty, for consistency)
+        setUserInputLines(prev => [...prev, command]);
+        setCommandOutputs(prev => [...prev, output]);
+        setCommandDirectories(prev => [...prev, currDir]);
+        setCurrentUserInput('');
+        if (newDir !== currDir) {
+          currentDirectoryRef.current = newDir;
+          setCurrentDirectory(newDir);
+        }
     } else if (e.key === 'Backspace') {
       e.preventDefault();
       setCurrentUserInput(prev => prev.slice(0, -1));
@@ -1288,8 +1296,7 @@ export default function TerminalAnimation() {
               return (
                 <React.Fragment key={`command-${index}`}>
                   <Line>
-                    {prompt}
-                    {line}
+                    {prompt}{line}
                   </Line>
                   {outputForThisCommand.map((output, outIndex) => {
                     // Parse ls output to style directories, files, and executables differently
