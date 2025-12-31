@@ -92,6 +92,26 @@ const Line = styled.div`
   min-height: 1.3em;
 `;
 
+const HiddenInput = styled.input`
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+  width: 1px;
+  height: 1px;
+  border: none;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  color: transparent;
+  caret-color: transparent;
+  outline: none;
+  
+  &:focus {
+    outline: none;
+    border: none;
+  }
+`;
+
 const LoadingDots = styled.span`
   display: inline-block;
   width: 3ch; /* Fixed width for exactly 3 characters in monospace font */
@@ -464,6 +484,7 @@ export default function TerminalAnimation() {
   const [commandHistory, setCommandHistory] = useState<string[]>([]); // History of entered commands
   const [historyIndex, setHistoryIndex] = useState<number>(-1); // Current position in history (-1 = no history selected, showing current input)
   const savedInputRef = useRef<string>(''); // Store current input when navigating history
+  const hiddenInputRef = useRef<HTMLInputElement>(null); // Ref for hidden input to trigger mobile keyboard
   const [glowOpacity, setGlowOpacity] = useState(1);
   const [textOpacity, setTextOpacity] = useState(1);
   
@@ -1040,6 +1061,16 @@ export default function TerminalAnimation() {
     }
   }, [historyIndex, commandHistory]);
 
+  // Auto-focus hidden input when prompt becomes available (for mobile)
+  useEffect(() => {
+    if (showFinalPrompt && !isScriptRunning && hiddenInputRef.current) {
+      // Small delay to ensure DOM is ready
+      setTimeout(() => {
+        hiddenInputRef.current?.focus();
+      }, 100);
+    }
+  }, [showFinalPrompt, isScriptRunning]);
+
   // Determine cursor visibility and blink state
   const isIdle = displayedCommand === COMMAND_PREFIX && displayedLines.length === 0;
   const inFadePhase = textOpacity < 1;
@@ -1047,10 +1078,160 @@ export default function TerminalAnimation() {
   // Cursor blinks during idle phase or in final prompt
   const shouldBlinkCursor = cursorBlink && (isIdle || showFinalPrompt);
 
+  // Handle click/tap on terminal to focus input (for mobile keyboard)
+  const handleTerminalClick = () => {
+    if (showFinalPrompt && !isScriptRunning && hiddenInputRef.current) {
+      hiddenInputRef.current.focus();
+    }
+  };
+
+  // Handle input from hidden input field (for mobile)
+  const handleHiddenInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (showFinalPrompt && !isScriptRunning) {
+      setCurrentUserInput(e.target.value);
+      setHistoryIndex(-1);
+    }
+  };
+
+  const handleHiddenInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showFinalPrompt || isScriptRunning) return;
+
+    // Handle the same keys as the main keyboard handler
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const command = currentUserInput.trim();
+      
+      // Add to command history if not empty and different from last command
+      if (command && (commandHistory.length === 0 || commandHistory[commandHistory.length - 1] !== command)) {
+        setCommandHistory(prev => [...prev, command]);
+      }
+      setHistoryIndex(-1);
+      
+      // Handle clear command separately - clears entire screen
+      if (command === 'clear') {
+        setDisplayedCommand('');
+        setDisplayedLines([]);
+        setLoadingDotsLine0('');
+        setLoadingDotsLine1('');
+        setUserInputLines([]);
+        setCommandOutputs([]);
+        setCommandDirectories([]);
+        setCurrentUserInput('');
+        setGlowOpacity(1);
+        setTextOpacity(1);
+        return;
+      }
+      
+      const currDir = currentDirectoryRef.current;
+      
+      // Handle script execution
+      if (command === './into-the-void.sh' || command === 'into-the-void.sh' || command.endsWith('/into-the-void.sh')) {
+        if (commandHistory.length === 0 || commandHistory[commandHistory.length - 1] !== command) {
+          setCommandHistory(prev => [...prev, command]);
+        }
+        setHistoryIndex(-1);
+        
+        setUserInputLines(prev => {
+          const newLines = [...prev, command];
+          setTimeout(() => {
+            runAnimationInline(newLines.length - 1);
+          }, 100);
+          return newLines;
+        });
+        setCommandOutputs(prev => [...prev, []]);
+        setCommandDirectories(prev => [...prev, currDir]);
+        setCurrentUserInput('');
+        return;
+      }
+      
+      let output: string[] = [];
+      let newDir = currDir;
+      
+      if (command) {
+        output = executeCommandWithDir(VIRTUAL_FS, command, currDir);
+        
+        if (command.startsWith('cd ')) {
+          const parts = command.split(/\s+/);
+          const cdPath = parts[1];
+          if (!cdPath || cdPath === '~') {
+            newDir = '~';
+          } else {
+            const target = resolvePathWithDir(VIRTUAL_FS, cdPath, currDir);
+            if (target && target.type === 'directory') {
+              if (cdPath === '..') {
+                if (currDir === '~' || currDir === '/') {
+                  newDir = '~';
+                } else {
+                  const dirParts = currDir.replace(/^~/, '').replace(/^\//, '').split('/').filter((p: string) => p);
+                  dirParts.pop();
+                  newDir = dirParts.length > 0 ? '~/' + dirParts.join('/') : '~';
+                }
+              } else if (cdPath.startsWith('/')) {
+                newDir = cdPath;
+              } else {
+                newDir = currDir === '~' ? `~/${cdPath}` : `${currDir}/${cdPath}`;
+              }
+            }
+          }
+        }
+      } else {
+        output = [''];
+      }
+      
+      setUserInputLines(prev => [...prev, command]);
+      setCommandOutputs(prev => [...prev, output]);
+      setCommandDirectories(prev => [...prev, currDir]);
+      setCurrentUserInput('');
+      if (newDir !== currDir) {
+        currentDirectoryRef.current = newDir;
+        setCurrentDirectory(newDir);
+      }
+    } else if (e.key === 'Backspace') {
+      e.preventDefault();
+      setCurrentUserInput(prev => prev.slice(0, -1));
+      setHistoryIndex(-1);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (commandHistory.length > 0) {
+        setHistoryIndex(prevIndex => {
+          if (prevIndex === -1) {
+            savedInputRef.current = currentUserInput;
+            return commandHistory.length - 1;
+          } else if (prevIndex > 0) {
+            return prevIndex - 1;
+          }
+          return prevIndex;
+        });
+      }
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHistoryIndex(prevIndex => {
+        if (prevIndex === -1) {
+          return -1;
+        } else if (prevIndex < commandHistory.length - 1) {
+          return prevIndex + 1;
+        } else {
+          return -1;
+        }
+      });
+    }
+  };
+
   return (
-    <Container className={jetbrainsMono.variable}>
+    <Container className={jetbrainsMono.variable} onClick={handleTerminalClick}>
       <GlowOverlay $opacity={glowOpacity} />
       <FilmGrain />
+      <HiddenInput
+        ref={hiddenInputRef}
+        type="text"
+        value={currentUserInput}
+        onChange={handleHiddenInputChange}
+        onKeyDown={handleHiddenInputKeyDown}
+        autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize="off"
+        spellCheck="false"
+      />
       <ScrollContainer>
         <Content $opacity={textOpacity}>
         {displayedCommand && (
