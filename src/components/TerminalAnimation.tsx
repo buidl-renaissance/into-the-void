@@ -16,7 +16,9 @@ const CURSOR_BLINK = keyframes`
 `;
 
 const Container = styled.div`
-  position: relative;
+  position: fixed;
+  top: 0;
+  left: 0;
   width: 100vw;
   height: 100vh;
   background: radial-gradient(circle at center, #0a0a0a 0%, #000000 100%);
@@ -25,6 +27,7 @@ const Container = styled.div`
   display: flex;
   align-items: flex-start;
   justify-content: flex-start;
+  touch-action: pan-y; /* Allow vertical scrolling on mobile */
 `;
 
 const GlowOverlay = styled.div<{ $opacity: number }>`
@@ -52,9 +55,12 @@ const FilmGrain = styled.div`
 
 const ScrollContainer = styled.div`
   height: 100vh;
+  width: 100%;
   overflow-y: auto;
   overflow-x: hidden;
-  width: 100%;
+  -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+  overscroll-behavior: contain; /* Prevent scroll chaining */
+  position: relative;
   
   &::-webkit-scrollbar {
     width: 8px;
@@ -79,6 +85,7 @@ const Content = styled.div<{ $opacity: number }>`
   padding-left: 1rem;
   padding-top: 1rem;
   padding-bottom: 5%;
+  min-height: calc(100vh - 1rem); /* Ensure content is at least viewport height */
   color: #EAEAEA;
   font-size: clamp(17px, 2vw, 24px);
   line-height: 1.3;
@@ -413,6 +420,7 @@ const OUTPUT_LINES = [
   '', // Blank line
   'music',
   'art',
+  'games',
   'people',
   '', // Blank line
   'location: STU202',
@@ -436,6 +444,7 @@ const LINE_PAUSES = [
   0.1,  // after blank (reduced from 0.15)
   0.06, // after 'music' (reduced from 0.15)
   0.06, // after 'art' (reduced from 0.15)
+  0.06, // after 'games' (reduced from 0.15)
   0.15, // after 'people' (reduced from 0.2)
   0.1,  // after blank (reduced from 0.15)
   0.1,  // after 'location: STU202' (reduced from 0.15)
@@ -503,7 +512,19 @@ export default function TerminalAnimation() {
     currentDirectoryRef.current = currentDirectory;
   }, [currentDirectory]);
 
-  // Auto-scroll when prompt appears or new content is added
+  // Prevent body scroll and auto-scroll when prompt appears or new content is added
+  useEffect(() => {
+    // Prevent body scroll when component mounts
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    
+    return () => {
+      // Restore body scroll when component unmounts
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    };
+  }, []);
+
   useEffect(() => {
     if (showFinalPrompt) {
       setTimeout(() => {
