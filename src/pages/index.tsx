@@ -30,8 +30,8 @@ export default function Home() {
         <meta property="og:title" content={pageTitle} />
         <meta property="og:description" content={fullDescription} />
         <meta property="og:image" content={FEATURED_IMAGE} />
-        <meta property="og:image:width" content="600" />
-        <meta property="og:image:height" content="600" />
+        <meta property="og:image:width" content="400" />
+        <meta property="og:image:height" content="400" />
         <meta property="og:image:alt" content="Into The Void - A celestial gathering in space and transition" />
         <meta property="og:site_name" content={SITE_NAME} />
         <meta property="og:locale" content="en_US" />
